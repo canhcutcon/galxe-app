@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Galxe Login with MetaMask</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+  </head>
+  <body>
+    <button onclick="login()">🔐 Login with MetaMask</button>
+    <pre id="output"></pre>
+
+    <script>
+      const output = document.getElementById("output");
+
+      async function login() {
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          await provider.send("eth_requestAccounts", []);
+          const signer = await provider.getSigner();
+          const address = await signer.getAddress();
+
+          output.innerText = `📦 Address: ${address}\n📡 Fetching nonce...`;
+
+          // Gọi backend để lấy nonce từ Galxe
+          const nonceRes = await fetch("http://localhost:3000/galxe/nonce", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address }),
+          });
+
+          const { nonce } = await nonceRes.json();
+          output.innerText += `\n🖋 Nonce: ${nonce}`;
+
+          // Ký message
+          const signature = await signer.signMessage(nonce);
+
+          // Gửi address + signature về backend để lấy JWT
+          const jwtRes = await fetch("http://localhost:3000/galxe/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address, signature }),
+          });
+
+          const { jwt } = await jwtRes.json();
+          output.innerText += `\n\n✅ JWT:\n${jwt}`;
+        } catch (err) {
+          console.error(err);
+          output.innerText += `\n❌ Error: ${err.message}`;
+        }
+      }
+    </script>
+  </body>
+</html>
