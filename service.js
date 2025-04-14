@@ -3,15 +3,10 @@ const { ethers } = require("ethers");
 const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 
-// Constants
 const GALXE_API_URL = "https://graphigo.prd.galaxy.eco/query";
+const GALXE_API_URL_NOTIFICATION =
+  "https://savings-graphigo.prd.latch.io/query";
 
-/**
- * Create the SIWE (Sign-In With Ethereum) message for authentication
- * @param {string} address - User's wallet address
- * @param {number} chainId - Blockchain chain ID (1 for Ethereum Mainnet, 42161 for Arbitrum)
- * @returns {Object} - SIWE message object
- */
 function createSiweMessage(address, chainId = 1) {
   const nonce = generateNonce(12);
   const currentDate = new Date();
@@ -31,11 +26,6 @@ function createSiweMessage(address, chainId = 1) {
   };
 }
 
-/**
- * Generate a random nonce string
- * @param {number} length - Length of the nonce
- * @returns {string} - Random nonce
- */
 function generateNonce(length) {
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -46,11 +36,6 @@ function generateNonce(length) {
   return result;
 }
 
-/**
- * Format the SIWE message for signing
- * @param {Object} siweMsg - SIWE message object
- * @returns {string} - Formatted message for signing
- */
 function formatSiweMessage(siweMsg) {
   return `app.galxe.com wants you to sign in with your Ethereum account:
 ${siweMsg.address}
@@ -66,74 +51,98 @@ Expiration Time: ${siweMsg.expirationTime}`;
 }
 
 async function getNotifications(walletAddress) {
+  const headers = {
+    Accept: "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    platform: "web",
+    origin: "https://app.galxe.com",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    "device-id": "ga-user-1744596028015.846335681",
+    pragma: "no-cache",
+    priority: "u=0, i",
+    "Accept-Encoding": "gzip, compress, deflate, br",
+  };
+
   const query = `
     query GetGlobalNotification($address: String!) {
-  claimable: Activities(
-    req: {addr: $address, activityType: [5], state: [2], first: 1}
-  ) {
-    list {
-      timestamp
-      activityType
-      state
-      __typename
+      claimable: Activities(
+        req: { addr: $address, activityType: [5], state: [2], first: 1 }
+      ) {
+        list {
+          timestamp
+          activityType
+          state
+          __typename
+        }
+        __typename
+      }
+      pending: Activities(
+        req: { addr: $address, activityType: [4, 5], state: [0], first: 1 }
+      ) {
+        list {
+          timestamp
+          activityType
+          state
+          __typename
+        }
+        __typename
+      }
+      recent: Activities(
+        req: { addr: $address, activityType: [4, 5], state: [1, 4], first: 20 }
+      ) {
+        list {
+          timestamp
+          activityType
+          state
+          __typename
+        }
+        __typename
+      }
     }
-    __typename
-  }
-  pending: Activities(
-    req: {addr: $address, activityType: [4, 5], state: [0], first: 1}
-  ) {
-    list {
-      timestamp
-      activityType
-      state
-      __typename
-    }
-    __typename
-  }
-  recent: Activities(
-    req: {addr: $address, activityType: [4, 5], state: [1, 4], first: 20}
-  ) {
-    list {
-      timestamp
-      activityType
-      state
-      __typename
-    }
-    __typename
-  }
-}
   `;
 
-  const variables = { address: walletAddress };
+  const variables = { address: walletAddress.toLowerCase() };
 
   try {
     const response = await axios.post(
-      GALXE_API_URL,
-      { operationName: "GetGlobalNotification", variables, query },
-      { headers: { "Content-Type": "application/json" } }
+      GALXE_API_URL_NOTIFICATION,
+      {
+        operationName: "GetGlobalNotification",
+        variables,
+        query,
+      },
+      { headers }
     );
-
     return response.data.data;
   } catch (error) {
     console.error(
       "Error fetching notifications:",
-      error.response?.data || error.message
+      error.response ? error.response.data : error.message
     );
     throw error;
   }
 }
 
-/**
- * Get user token balance
- * @param {string} walletAddress - User's wallet address
- * @returns {Promise<Object>} - User balance
- */
 async function getUserBalance(walletAddress) {
+  const headers = {
+    Accept: "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    platform: "web",
+    origin: "https://app.galxe.com",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    "device-id": "ga-user-1744596028015.846335681",
+    pragma: "no-cache",
+    priority: "u=0, i",
+    "Accept-Encoding": "gzip, compress, deflate, br",
+  };
+
   const query = `
     query GetBalance($address: String!) {
       GetBalance(address: $address) {
         token
-        ssBalance
+        balance
         pendingAmount
         __typename
       }
@@ -144,9 +153,9 @@ async function getUserBalance(walletAddress) {
 
   try {
     const response = await axios.post(
-      GALXE_API_URL,
+      GALXE_API_URL_NOTIFICATION,
       { operationName: "GetBalance", variables, query },
-      { headers: { "Content-Type": "application/json" } }
+      { headers }
     );
 
     return response.data.data.GetBalance;
@@ -160,6 +169,18 @@ async function getUserBalance(walletAddress) {
 }
 
 async function getTotalAndYesterdayProfit(walletAddress) {
+  const headers = {
+    Accept: "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    platform: "web",
+    origin: "https://app.galxe.com",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    "device-id": "ga-user-1744596028015.846335681",
+    pragma: "no-cache",
+    priority: "u=0, i",
+    "Accept-Encoding": "gzip, compress, deflate, br",
+  };
   const query = `
     query GetTotalAndYesterdayProfit($address: String!) {
       totalProfit: GetLSDTotalProfit(address: $address) {
@@ -184,9 +205,9 @@ async function getTotalAndYesterdayProfit(walletAddress) {
 
   try {
     const response = await axios.post(
-      GALXE_API_URL,
+      GALXE_API_URL_NOTIFICATION,
       { operationName: "GetTotalAndYesterdayProfit", variables, query },
-      { headers: { "Content-Type": "application/json" } }
+      { headers }
     );
 
     return response.data.data;
@@ -199,12 +220,6 @@ async function getTotalAndYesterdayProfit(walletAddress) {
   }
 }
 
-/**
- * Get all campaign quests
- * @param {string} walletAddress - User's wallet address
- * @param {string} jwtToken - Authentication token
- * @returns {Promise<Object>} - Campaign quests
- */
 async function getAllCampaignQuests(walletAddress, jwtToken) {
   const query = `
     query CampaignList($input: ListCampaignInput!, $address: String!) {
@@ -263,14 +278,19 @@ async function getAllCampaignQuests(walletAddress, jwtToken) {
   }
 }
 
-/**
- * Get Participation Info for a Quest
- * @param {string} campaignId - Campaign ID
- * @param {string} walletAddress - User's wallet address
- * @param {string} jwtToken - Authentication token
- * @returns {Promise<Object>} - Participation information
- */
 async function getParticipationInfo(campaignId, walletAddress, jwtToken) {
+  const headers = {
+    Accept: "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    platform: "web",
+    origin: "https://app.galxe.com",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    "device-id": "ga-user-1744596028015.846335681",
+    pragma: "no-cache",
+    priority: "u=0, i",
+    "Accept-Encoding": "gzip, compress, deflate, br",
+  };
   const query = `
     query QuestClaimSection($id: ID!, $address: String!, $withAddress: Boolean!, $isParent: Boolean = false) {
       campaign(id: $id) {
@@ -327,14 +347,6 @@ async function getParticipationInfo(campaignId, walletAddress, jwtToken) {
   }
 }
 
-/**
- * Estimate Quest Cost Detail
- * @param {number} questId - Quest ID
- * @param {number} mintCount - Number of mints
- * @param {string} chain - Blockchain chain name
- * @param {string} jwtToken - Authentication token
- * @returns {Promise<Object>} - Cost estimation details
- */
 async function estimateQuestCostDetail(questId, mintCount, chain, jwtToken) {
   const query = `
     query estimateQuestCostDetail($input: EstimateQuestCostDetailInput!) {
@@ -376,12 +388,6 @@ async function estimateQuestCostDetail(questId, mintCount, chain, jwtToken) {
   }
 }
 
-/**
- * Login to Galxe using MetaMask
- * @param {ethers.Wallet|ethers.Signer} signer - Ethereum wallet or signer
- * @param {number} chainId - Blockchain chain ID
- * @returns {Promise<string>} - JWT token for authenticated requests
- */
 async function loginWithMetaMask(signer, chainId = 1) {
   try {
     const address = await signer.getAddress();
@@ -444,13 +450,6 @@ async function loginWithMetaMask(signer, chainId = 1) {
   }
 }
 
-/**
- * Create a new account on Galxe
- * @param {string} walletAddress - User's wallet address
- * @param {string} username - Desired username
- * @param {string} jwtToken - Authentication token
- * @returns {Promise<Object>} - Account creation response
- */
 async function createAccount(walletAddress, username, jwtToken) {
   const query = `
     mutation CreateNewAccount($input: CreateNewAccount!) {
@@ -693,6 +692,18 @@ async function getCampaignDetails(campaignId, address, jwtToken) {
  * @returns {Promise<Object>} - List of user tokens
  */
 async function getListUserTokens(afterId, limit, jwtToken) {
+  const headers = {
+    Accept: "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    platform: "web",
+    origin: "https://app.galxe.com",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    "device-id": "ga-user-1744596028015.846335681",
+    pragma: "no-cache",
+    priority: "u=0, i",
+    "Accept-Encoding": "gzip, compress, deflate, br",
+  };
   const query = `
     query UserTokenList($request: ListUserTokensRequest!) {
       listUserTokens(request: $request) {
@@ -724,11 +735,11 @@ async function getListUserTokens(afterId, limit, jwtToken) {
 
   try {
     const response = await axios.post(
-      GALXE_API_URL,
+      GALXE_API_URL_NOTIFICATION,
       { operationName: "UserTokenList", variables, query },
       {
         headers: {
-          "Content-Type": "application/json",
+          ...headers,
           Authorization: jwtToken,
         },
       }
@@ -775,9 +786,84 @@ async function renewToken(oldToken) {
   }
 }
 
-/**
- * Main function to demonstrate the flow
- */
+async function getRecentParticipateCampaign(walletAddress, token) {
+  const headers = {
+    Accept: "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    platform: "web",
+    origin: "https://app.galxe.com",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    "device-id": "ga-user-1744596028015.846335681",
+    pragma: "no-cache",
+    priority: "u=0, i",
+    "Accept-Encoding": "gzip, compress, deflate, br",
+    authorization: token,
+  };
+
+  const query = `
+    query RecentParticipation($address: String!, $participationInput: ListParticipationInput!) {
+      addressInfo(address: $address) {
+        id
+        recentParticipation(input: $participationInput) {
+          list {
+            id
+            chain
+            tx
+            nftId
+            nftCore {
+              contractAddress
+              __typename
+            }
+            campaign {
+              id
+              name
+              space {
+                id
+                alias
+                __typename
+              }
+              __typename
+            }
+            status
+            __typename
+          }
+          __typename
+        }
+        __typename
+      }
+    }
+  `;
+
+  const variables = {
+    address: `EVM:${walletAddress}`,
+    participationInput: {
+      first: 40,
+      onlyGasless: false,
+      onlyVerified: false,
+    },
+  };
+
+  try {
+    const response = await axios.post(
+      GALXE_API_URL,
+      {
+        operationName: "RecentParticipation",
+        variables,
+        query,
+      },
+      { headers }
+    );
+    return response.data.data;
+  } catch (error) {
+    console.error(
+      "Error fetching recent participated campaigns:",
+      error.response ? error.response.data : error.message
+    );
+    throw error;
+  }
+}
+
 async function main() {
   try {
     // Set up wallet from private key
@@ -854,7 +940,7 @@ async function main() {
     // Get notifications
     console.log("Fetching notifications...");
     const notifications = await getNotifications(walletAddress, jwtToken);
-    console.log(`Found ${notifications.list.length} notifications`);
+    console.log(`Found ${JSON.stringify(notifications)} notifications`);
 
     // Get user balance
     console.log("Fetching user balance...");
@@ -869,11 +955,14 @@ async function main() {
     console.log("Total and yesterday profit:", totalAndYesterdayProfit);
 
     // Get User Token List
-    console.log("Fetching user token list...");
-    const userTokenList = await getListUserTokens(0, 10, jwtToken);
-    console.log("User token list:", userTokenList);
+    // console.log("Fetching user token list...");
+    // const userTokenList = await getListUserTokens(0, 10, jwtToken);
+    // console.log("User token list:", userTokenList);
 
-    // Get participation info for the first campaign quest
+    // Get recent participated campaign
+    console.log(`Recent join campaign...`);
+    const recent = await getRecentParticipateCampaign(walletAddress, jwtToken);
+    console.log("Campaigns:", JSON.stringify(recent, null, 2));
   } catch (error) {
     console.error("Error in main function:", error);
   }
